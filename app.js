@@ -2117,9 +2117,17 @@ window.addEventListener('hashchange', async () => {
 /* ================= go ================= */
 applyBrand();
 if (CFG.supabaseUrl.startsWith('SUPABASE')) {
-  $('#app').innerHTML = `<div class="wrap auth"><div class="auth-card">${wordmark()}<p class="lead">Add your Supabase URL and key to config.js to finish setup.</p></div></div>`;
+  $('#app').innerHTML = `<div class="wrap auth"><div class="auth-card">${wordmark()}<p class="lead">Add your Supabase URL and key to settings.js to finish setup.</p></div></div>`;
 } else {
-  start().catch(err => { console.error(err); $('#app').innerHTML = `<div class="wrap auth"><div class="auth-card">${wordmark()}<p class="inline-err">${esc(err.message || 'Could not load the portal.')}</p><button class="btn" data-act="signout">Sign out</button></div></div>`; });
+  // If the portal can't be reached (no signal, or the service is down), say so instead of loading forever
+  const unreachable = () => authShell(`<h1>One <span class="ital">moment</span></h1>
+    <p class="lead">We can’t reach your portal right now. Check your connection, or try again in a few minutes.</p>
+    <button class="btn primary" onclick="location.reload()">Try again</button>
+    <p class="auth-foot">Need something urgently? Contact ${esc(B.fullName)} directly.</p>`);
+  const watchdog = setTimeout(() => { if ($('#app .boot')) unreachable(); }, 15000);
+  start().then(() => clearTimeout(watchdog)).catch(err => { clearTimeout(watchdog); console.error(err);
+    if (/fetch|network|load failed/i.test(err.message || '')) return unreachable();
+    $('#app').innerHTML = `<div class="wrap auth"><div class="auth-card">${wordmark()}<p class="inline-err">${esc(err.message || 'Could not load the portal.')}</p><button class="btn" data-act="signout">Sign out</button></div></div>`; });
 }
 })();
 
