@@ -711,7 +711,40 @@ function vSelections() {
     </section>`; }).join('')}</div>` : `<div class="empty">${isStaff() ? 'Add the first selection category, such as plumbing fixtures or countertops.' : 'Your selections will appear here.'}</div>`}`;
 }
 
+// The signed record of a change order: what was agreed, by whom, when, and a fingerprint of the exact terms
+function coDoc(c) {
+  const p = P(), no = `CO-${String(c.number).padStart(2,'0')}`, a = c.sign_audit || {};
+  const before = (+p.contract_amount || 0) + S.d.change_orders.filter(x => x.status === 'approved' && x.number < c.number).reduce((t, x) => t + +x.amount, 0);
+  const when = c.signed_at ? (() => { const o = { year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }; try { return new Date(c.signed_at).toLocaleString('en-US', { ...o, timeZone: a.time_zone || undefined }); } catch { return new Date(c.signed_at).toLocaleString('en-US', o); } })() : '';
+  const device = (a.device || '').replace(/^Mozilla\/5\.0 \(([^)]*)\).*$/, '$1').slice(0, 80);
+  const status = c.status === 'approved' ? 'Signed' : c.status === 'declined' ? 'Declined' : 'Awaiting signature';
+  return `<div class="co-doc-bar no-print"><button class="linkbtn" data-act="co-doc-close">← Change orders</button><button class="btn primary" data-act="co-doc-print">Print or save as PDF</button></div>
+  <article class="co-doc">
+    <header class="co-doc-head">${B.logo ? logoImg('co-logo') : `<b>${esc(B.fullName)}</b>`}<div class="small muted">${esc(B.fullName)}${B.office?.address ? '<br>' + esc(B.office.address) : ''}</div></header>
+    <div class="co-doc-title"><span class="eyebrow">Change order · ${status}</span><h1>${no}</h1><p>${esc(p.name)}${p.lot || p.address ? ' · ' + esc(p.lot || p.address) : ''}${p.client_names ? '<br>For ' + esc(p.client_names) : ''}</p></div>
+    <table class="co-doc-table"><tbody>
+      <tr><th>Change</th><td><b>${esc(c.title)}</b>${c.details ? `<p>${esc(c.details)}</p>` : ''}</td></tr>
+      <tr><th>Price change</th><td class="num">${signed(c.amount)}</td></tr>
+      <tr><th>Schedule</th><td>${c.days ? `${c.days} day${c.days > 1 ? 's' : ''} added` : 'No change'}</td></tr>
+      ${p.contract_amount ? `<tr><th>Agreement before this change</th><td class="num">${money(before)}</td></tr><tr><th>Agreement after this change</th><td class="num"><b>${money(before + (c.status === 'approved' ? +c.amount : 0))}</b>${c.status === 'approved' ? '' : ' <span class="muted small">(unchanged unless signed)</span>'}</td></tr>` : ''}
+      <tr><th>Prepared by</th><td>${esc(nameOf(c.created_by))}, ${fdL(c.created_at)}</td></tr>
+    </tbody></table>
+    ${c.status === 'approved' ? `<section class="co-doc-sig">
+      <div class="sig-line"><span class="sig-mark">${esc(c.signer_name || c.signature)}</span><span class="sig-init">${esc(c.signature)}</span></div>
+      <div class="small">Signed electronically by <b>${esc(c.signer_name || nameOf(c.signed_by))}</b>${c.signer_name ? '' : ` (initials ${esc(c.signature)})`} on ${esc(when)}</div>
+      <dl class="co-audit">
+        ${a.email ? `<div><dt>Account</dt><dd>${esc(a.email)}</dd></div>` : ''}
+        ${a.ip ? `<div><dt>Network address</dt><dd>${esc(a.ip)}</dd></div>` : ''}
+        ${device ? `<div><dt>Device</dt><dd>${esc(device)}</dd></div>` : ''}
+        ${a.consent ? `<div><dt>Consent</dt><dd>“${esc(a.consent)}”</dd></div>` : ''}
+        ${c.content_hash ? `<div><dt>Fingerprint (SHA-256)</dt><dd class="hash">${esc(c.content_hash)}</dd></div>` : ''}
+      </dl></section>` : c.status === 'declined' ? `<section class="co-doc-sig"><div class="small">Declined by ${esc(nameOf(c.signed_by))}${c.decline_note ? `: “${esc(c.decline_note)}”` : ''}</div></section>` : ''}
+    <footer class="small muted">${c.status === 'approved' ? `Signed in the ${esc(B.fullName)} client portal. The fingerprint identifies the exact terms above; any change to them would produce a different fingerprint.` : `Not yet signed.`}</footer>
+  </article>`;
+}
+
 function vChanges() {
+  if (S.ui.coDoc) { const c = S.d.change_orders.find(x => x.id === S.ui.coDoc); if (c) return coDoc(c); S.ui.coDoc = null; }
   const pend = pendingCOs().reduce((a,c) => a + +c.amount, 0);
   const form = isStaff() ? `
     <section class="card composer" style="margin-bottom:32px"><span class="eyebrow">Prepare a change order</span>
@@ -735,6 +768,7 @@ function vChanges() {
         <span class="v num">${signed(c.amount)}</span><span class="small muted">${c.days ? `${c.days} day${c.days > 1 ? 's' : ''} added` : 'No schedule change'}</span>
         ${c.status === 'pending' && !isStaff() ? `<div class="row" style="gap:8px"><button class="btn sm ghost" data-act="co-decline" data-id="${c.id}">Decline</button><button class="btn sm primary" data-act="co-approve" data-id="${c.id}">Review & sign</button></div>` : ''}
         ${c.status === 'pending' && isStaff() ? `<span class="small muted">Awaiting ${esc(clientFirst())}</span><button class="edit-link" data-act="co-del" data-id="${c.id}">Withdraw</button>` : ''}
+        ${c.status === 'approved' ? `<button class="btn sm ghost" data-act="co-doc" data-id="${c.id}">Signed copy</button>` : ''}
       </div>
     </article>`).join('') : '<div class="empty">No change orders.</div>'}</div>`;
 }
@@ -795,13 +829,20 @@ function vCalendar() {
 function docRows() {
   const q = S.ui.docQ.trim().toLowerCase();
   const rows = S.d.documents.filter(d => (S.ui.docFolder === 'All' || d.folder === S.ui.docFolder) && (!q || d.name.toLowerCase().includes(q)));
+  // Signed change orders are filed automatically (their signed copy is generated from the record)
+  const coFolder = B.documentFolders.find(f => /change/i.test(f)) || 'Change orders';
+  const cos = on('changes') ? S.d.change_orders.filter(c => c.status === 'approved' && (S.ui.docFolder === 'All' || S.ui.docFolder === coFolder))
+    .map(c => ({ c, name: `CO-${String(c.number).padStart(2,'0')} · ${c.title} (signed)` })).filter(x => !q || x.name.toLowerCase().includes(q)) : [];
+  const coRows = cos.map(({ c, name }) => `<tr><td><div class="file"><span class="ext">PDF</span><button data-act="co-doc" data-id="${c.id}">${esc(name)}</button></div></td><td class="muted small">${esc(coFolder)}</td><td class="n small">${ft(c.signed_at)}</td><td class="n small muted">Signed copy</td></tr>`).join('');
+  if (!rows.length && coRows) return coRows;
   if (!rows.length) return `<tr><td colspan="4" class="muted" style="text-align:center;padding:28px">${S.d.documents.length ? `No documents match.` : 'No documents yet.'}</td></tr>`;
   const kb = b => !b ? '' : b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
   return rows.map(d => `<tr><td><div class="file"><span class="ext">${esc((d.name.split('.').pop() || 'file').toUpperCase().slice(0,4))}</span><button data-act="doc-open" data-id="${d.id}">${esc(d.name.replace(/\.[a-z0-9]+$/i, ''))}</button>${(Date.now() - new Date(d.created_at)) < 7 * 864e5 ? '<span class="tag brass">New</span>' : ''}</div></td>
-    <td class="muted small">${esc(d.folder)}</td><td class="n small">${ft(d.created_at)}</td><td class="n small muted">${kb(d.size_bytes)}${isStaff() ? ` <button class="edit-link" data-act="doc-del" data-id="${d.id}" style="margin-left:8px">Delete</button>` : ''}</td></tr>`).join('');
+    <td class="muted small">${esc(d.folder)}</td><td class="n small">${ft(d.created_at)}</td><td class="n small muted">${kb(d.size_bytes)}${isStaff() ? ` <button class="edit-link" data-act="doc-del" data-id="${d.id}" style="margin-left:8px">Delete</button>` : ''}</td></tr>`).join('') + coRows;
 }
 function vDocuments() {
-  const folders = ['All', ...new Set([...B.documentFolders.filter(f => S.d.documents.some(d => d.folder === f)), ...S.d.documents.map(d => d.folder)])];
+  const coFolder = B.documentFolders.find(f => /change/i.test(f)) || 'Change orders', hasCO = on('changes') && S.d.change_orders.some(c => c.status === 'approved');
+  const folders = ['All', ...new Set([...B.documentFolders.filter(f => S.d.documents.some(d => d.folder === f) || (hasCO && f === coFolder)), ...S.d.documents.map(d => d.folder)])];
   return pageHead('Archive', 'Documents', 'Drawings, permits, inspections, agreements, and invoices, kept for you long after closing.',
     isStaff() ? `<div class="row" style="align-items:flex-end"><div class="field"><label for="doc-folder">Folder</label><select id="doc-folder">${B.documentFolders.map(f => `<option>${esc(f)}</option>`).join('')}</select></div><label class="btn primary" for="doc-up">Upload<input type="file" id="doc-up" multiple hidden></label></div>` : '') + `
   <div class="folders">${folders.map(f => `<button data-act="doc-folder" data-f="${esc(f)}" aria-pressed="${S.ui.docFolder === f}">${esc(f)}</button>`).join('')}</div>
@@ -1924,12 +1965,23 @@ async function act(a, el) {
       const c = S.d.change_orders.find(x => x.id === id);
       modal(`<span class="eyebrow">CO-${String(c.number).padStart(2,'0')} · Change order</span><h2>${esc(c.title)}</h2>${c.details ? `<p class="muted">${esc(c.details)}</p>` : ''}
         <div class="ledger"><div><span>Price change</span><span>${signed(c.amount)}</span></div><div><span>Schedule</span><span>${c.days ? `${c.days} days added` : 'No change'}</span></div></div>
-        <div class="field"><label for="sig">Initial to sign</label><input id="sig" maxlength="4" autocomplete="off" style="font-family:var(--f-display);font-style:italic;font-size:26px;max-width:160px;text-transform:uppercase"></div>
-        <p class="small muted">By initialing, you approve this change to your agreement.</p>
+        <div class="form-grid sign-grid"><div class="field"><label for="sig-name">Your full name</label><input id="sig-name" autocomplete="name" value="${esc(S.me.full_name || '')}" style="font-family:var(--f-display);font-size:22px"></div>
+          <div class="field"><label for="sig">Initials</label><input id="sig" maxlength="4" autocomplete="off" value="${esc(ini(S.me.full_name || ''))}" style="font-family:var(--f-display);font-style:italic;font-size:22px;text-transform:uppercase"></div></div>
+        <label class="consent"><input type="checkbox" id="sig-ok"> <span>I agree to sign this change order electronically. My electronic signature has the same effect as my handwritten signature.</span></label>
+        <p class="small muted">Signing approves this change to your agreement. You’ll be able to download a signed copy right away.</p>
+        <p class="inline-err" id="sig-err" hidden></p>
         <div class="row" style="justify-content:flex-end"><button class="btn ghost" data-act="modal-close">Cancel</button><button class="btn primary" data-act="co-sign" data-id="${c.id}">Sign & approve</button></div>`); break; }
     case 'co-sign': {
-      const v = val('sig'); if (!v) { toast('Add your initials to sign'); $('#sig').focus(); break; }
-      must(await sb.rpc('sign_change_order', { cid: id, initials: v })); closeModal(); await refresh(['change_orders','activity']); toast('Signed. Thank you.'); break; }
+      const name = val('sig-name'), v = val('sig'), err = $('#sig-err'), say = (t, f) => { err.textContent = t; err.hidden = false; $(f)?.focus(); };
+      if (!name) { say('Type your full name to sign.', '#sig-name'); break; }
+      if (!v) { say('Add your initials.', '#sig'); break; }
+      if (!$('#sig-ok').checked) { say('Please check the box to agree to sign electronically.', '#sig-ok'); break; }
+      el.textContent = 'Signing';
+      must(await sb.rpc('sign_change_order', { cid: id, initials: v, full_name: name, consent: true, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }));
+      closeModal(); await refresh(['change_orders','activity']); S.ui.coDoc = id; render(); window.scrollTo(0, 0); toast('Signed. Here is your copy.'); break; }
+    case 'co-doc': S.ui.coDoc = id; if (S.view !== 'changes') location.hash = '#changes'; else { render(); window.scrollTo(0, 0); } break;
+    case 'co-doc-close': S.ui.coDoc = null; render(); window.scrollTo(0, 0); break;
+    case 'co-doc-print': window.print(); break;
     case 'co-decline':
       modal(`<h2>Decline this change?</h2><div class="field"><label for="dec-note">Note to your team</label><textarea id="dec-note"></textarea></div>
         <div class="row" style="justify-content:flex-end"><button class="btn ghost" data-act="modal-close">Cancel</button><button class="btn primary" data-act="co-decline-yes" data-id="${id}">Decline</button></div>`); break;
@@ -2110,7 +2162,7 @@ window.addEventListener('hashchange', async () => {
   if (!VIEWS[h] && h !== 'decisions' && !EXTRA.some(x => x.id === h)) return;
   if (!S.d && S.pid) await loadProject(S.pid);
   if (!S.d) return;
-  closeModal(); hideTerm(); if (resolveView(h) !== 'walls') S.ui.wallRoom = null; if (resolveView(h) !== 'manual') { S.ui.manRoom = null; S.ui.manQ = ''; } S.view = resolveView(h); render(); window.scrollTo(0, 0); if (S.view === 'glossary') focusTerm();
+  closeModal(); hideTerm(); if (resolveView(h) !== 'walls') S.ui.wallRoom = null; if (h !== 'changes') S.ui.coDoc = null; if (resolveView(h) !== 'manual') { S.ui.manRoom = null; S.ui.manQ = ''; } S.view = resolveView(h); render(); window.scrollTo(0, 0); if (S.view === 'glossary') focusTerm();
   if (h === 'messages') refresh(['messages']);
 });
 
