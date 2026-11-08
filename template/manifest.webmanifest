@@ -1,0 +1,12 @@
+{
+  "name": "Example Homes",
+  "short_name": "Example",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#F1F0EC",
+  "theme_color": "#2A2D2F",
+  "icons": [
+    { "src": "logos/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "logos/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

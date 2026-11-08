@@ -1,0 +1,3 @@
+/* This builder's custom look. Loads after the shared engine styles, so anything here wins.
+   Start with settings.theme presets (corners, hero, density, headings, texture), then refine here.
+   Useful hooks: .hero, .page-h, .concierge, .todo, .btn, .card, .auth.split, .auth-photo, .extra-page */
