@@ -42,10 +42,11 @@ If a builder needs something the engine can't do, add a general option to the en
 
 ## Release a new engine version
 
-1. Change `app.js` / `styles.css`, test, bump `VERSION`.
-2. Commit, then tag: `git tag v1.1.0 && git push --tags`.
-3. Each builder upgrades when you choose: change `@v1.0.0` to `@v1.1.0` in their `index.html` (two places).
-   Tagged versions never change, so a builder's portal can't break from an engine update until you upgrade it.
+1. Change `app.js` / `styles.css`, test, bump `VERSION`, commit, and push.
+2. Each builder upgrades when you choose: in their `index.html`, replace the commit id after `portal-engine@`
+   (two places) with the new commit id, and update the version comment.
+   A commit never changes, so a builder's portal can't be affected by an engine update until you upgrade it.
+   (If you create GitHub releases such as `v1.1.0`, `@v1.1.0` works the same way.)
 
 ## Email function
 
